@@ -3,120 +3,126 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>隔空控树终极版</title>
+    <title>巨型圣诞树交互系统</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; }
-        #canvas-ui { position: absolute; top: 10px; right: 10px; width: 100px; height: 130px; border: 2px solid #00ff00; border-radius: 8px; z-index: 100; transform: scaleX(-1); background: #222; }
-        #overlay { background: rgba(0,0,0,0.9); transition: opacity 0.5s; }
+        #canvas-ui { position: absolute; top: 10px; right: 10px; width: 80px; height: 110px; border: 1px solid #0f0; border-radius: 5px; z-index: 100; transform: scaleX(-1); opacity: 0.7; }
     </style>
 </head>
 <body>
-    <div id="overlay" class="absolute inset-0 z-[200] flex flex-col items-center justify-center text-white text-center">
-        <div class="p-8 border-2 border-green-500 rounded-3xl bg-gray-900 shadow-2xl">
-            <h1 class="text-3xl font-bold mb-4">🖐️ 隔空交互系统</h1>
-            <p class="mb-8 text-gray-400 text-lg">点击下方按钮以授权<br>摄像头 AI 捕捉手势</p>
-            <button onclick="activateAI()" class="bg-red-600 px-12 py-5 rounded-full font-bold text-2xl animate-pulse shadow-lg shadow-red-900/50">
-                授权并启动
-            </button>
-        </div>
+    <div id="overlay" class="absolute inset-0 z-[200] flex items-center justify-center bg-black">
+        <button onclick="start()" class="bg-green-600 text-white px-10 py-5 rounded-full font-bold text-2xl shadow-2xl">点击开启巨型交互树</button>
     </div>
 
-    <div id="status" class="absolute top-10 w-full text-center text-white z-50 text-xl font-bold"></div>
+    <div id="status" class="absolute top-10 w-full text-center text-white z-50 text-xl font-bold pointer-events-none"></div>
     <canvas id="canvas-ui"></canvas>
     <video id="input-video" style="display:none"></video>
 
     <script>
         let scene, camera, renderer, treeGroup, lastX = null;
-        const status = document.getElementById('status');
+        let raycaster = new THREE.Raycaster();
+        let mouse = new THREE.Vector2();
 
-        // 1. 初始化 3D 圣诞树
         function init3D() {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 2.5, 5.5); // 拉近视角，树会很大
+            // 相机高度降低到1.5，距离拉近到4，产生仰视感
+            camera.position.set(0, 1.5, 4); 
 
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
 
-            scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-            const light = new THREE.PointLight(0xffffff, 1);
-            light.position.set(5, 5, 5);
-            scene.add(light);
-
+            scene.add(new THREE.AmbientLight(0xffffff, 1));
             treeGroup = new THREE.Group();
-            treeGroup.scale.set(1.4, 1.4, 1.4); // 放大树木
+            treeGroup.scale.set(2.5, 2.5, 2.5); // 树木尺寸大幅增加
 
             // 树干
-            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 1), new THREE.MeshPhongMaterial({color: 0x5D4037}));
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 1), new THREE.MeshPhongMaterial({color: 0x4B2C20}));
             treeGroup.add(trunk);
-            // 圣诞树冠
-            for(let i=0; i<5; i++) {
+
+            // 树冠
+            for(let i=0; i<4; i++) {
                 const leaf = new THREE.Mesh(
-                    new THREE.ConeGeometry(2.1 - i*0.4, 1.4, 10),
-                    new THREE.MeshPhongMaterial({color: 0x1A472A, flatShading: true})
+                    new THREE.ConeGeometry(1.2 - i*0.25, 1, 12),
+                    new THREE.MeshPhongMaterial({color: 0x0A3D16, flatShading: true})
                 );
-                leaf.position.y = 1.0 + (i * 0.8);
+                leaf.position.y = 0.8 + (i * 0.6);
                 treeGroup.add(leaf);
+                
+                // 每层挂两张图片
+                addPhotoToLevel(leaf.position.y, i);
             }
             scene.add(treeGroup);
+
+            // 点击事件监听
+            window.addEventListener('click', onDocumentMouseDown, false);
+            window.addEventListener('touchstart', (e) => onDocumentMouseDown(e.touches[0]), false);
         }
 
-        // 2. 激活 AI 引擎
-        async function activateAI() {
-            document.getElementById('overlay').style.opacity = '0';
-            setTimeout(() => document.getElementById('overlay').remove(), 500);
-            status.innerText = "正在唤醒 AI 视觉引擎...";
+        function addPhotoToLevel(y, index) {
+            const loader = new THREE.TextureLoader();
+            // 使用占位图，你可以之后换成你自己的图片链接
+            const tex = loader.load(`https://picsum.photos/200/300?random=${index}`);
+            const geo = new THREE.PlaneGeometry(0.4, 0.6);
+            const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide });
+            const photo = new THREE.Mesh(geo, mat);
+            
+            const angle = (index * 2);
+            photo.position.set(Math.cos(angle)*0.8, y, Math.sin(angle)*0.8);
+            photo.lookAt(0, y, 0);
+            photo.userData = { isPhoto: true, originalPos: photo.position.clone() };
+            treeGroup.add(photo);
+        }
 
+        function onDocumentMouseDown(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(treeGroup.children);
+
+            if (intersects.length > 0 && intersects[0].object.userData.isPhoto) {
+                const obj = intersects[0].object;
+                // 瞬间放大动画：拉近到相机面前
+                if(obj.scale.x === 1) {
+                    obj.scale.set(3, 3, 3);
+                    obj.position.set(0, 1.5, 2); // 弹到正前方
+                    obj.rotation.set(0,0,0);
+                } else {
+                    obj.scale.set(1, 1, 1);
+                    obj.position.copy(obj.userData.originalPos);
+                }
+            }
+        }
+
+        async function start() {
+            document.getElementById('overlay').remove();
             init3D();
-            animate();
-
             const video = document.getElementById('input-video');
-            const canvas = document.getElementById('canvas-ui');
-            const ctx = canvas.getContext('2d');
-
             const hands = new Hands({locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
             hands.setOptions({maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.5});
-
             hands.onResults(res => {
+                const canvas = document.getElementById('canvas-ui');
+                const ctx = canvas.getContext('2d');
                 ctx.clearRect(0,0,canvas.width,canvas.height);
                 ctx.drawImage(res.image, 0,0,canvas.width,canvas.height);
                 if(res.multiHandLandmarks && res.multiHandLandmarks.length > 0) {
-                    status.innerText = "✨ 已连接！请大幅度摆动手掌 ✨";
-                    const x = res.multiHandLandmarks[0][8].x; // 食指尖 X
-                    if(lastX !== null) {
-                        // 【超高灵敏度】
-                        treeGroup.rotation.y += (x - lastX) * 70; 
-                    }
+                    const x = res.multiHandLandmarks[0][8].x;
+                    if(lastX !== null) treeGroup.rotation.y += (x - lastX) * 100; // 极速旋转
                     lastX = x;
-                } else {
-                    status.innerText = "👋 待机中...请展示手掌";
-                    lastX = null;
+                    document.getElementById('status').innerText = "✨ 隔空旋转中 ✨";
                 }
             });
-
-            const cam = new Camera(video, {
-                onFrame: async () => { await hands.send({image: video}); },
-                width: 320, height: 240
-            });
-            await cam.start();
+            const cam = new Camera(video, {onFrame: async () => {await hands.send({image: video})}, width: 320, height: 240});
+            cam.start();
+            render();
         }
 
-        function animate() {
-            requestAnimationFrame(animate);
-            renderer.render(scene, camera);
-        }
-
-        window.onresize = () => {
-            if(!camera) return;
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            camera.aspect = window.innerWidth/window.innerHeight;
-            camera.updateProjectionMatrix();
-        };
+        function render() { requestAnimationFrame(render); renderer.render(scene, camera); }
     </script>
 </body>
 </html>
