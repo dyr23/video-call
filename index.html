@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>私人视频通话</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white font-sans overflow-hidden">
+    <div class="relative h-screen w-full bg-black">
+        <video id="remote-video" autoplay playsinline class="w-full h-full object-cover"></video>
+        
+        <video id="local-video" autoplay muted playsinline 
+               class="absolute top-4 right-4 w-32 h-48 object-cover rounded-xl border-2 border-blue-500 shadow-2xl z-10"></video>
+
+        <div class="absolute bottom-10 left-0 w-full px-6 z-20">
+            <div class="bg-black/60 backdrop-blur-md p-6 rounded-3xl border border-white/10">
+                <div class="mb-4">
+                    <p class="text-xs text-gray-400">你的专属通话 ID：</p>
+                    <p id="my-id" class="text-xl font-mono text-yellow-400 font-bold select-all">正在连接...</p>
+                </div>
+
+                <div class="flex flex-col gap-3">
+                    <input id="peer-id-input" type="text" placeholder="输入对方给你的 ID" 
+                           class="w-full bg-white/10 p-4 rounded-2xl border border-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <button onclick="makeCall()" class="w-full bg-green-500 hover:bg-green-600 py-4 rounded-2xl font-bold transition-all active:scale-95">
+                        📞 开始视频呼叫
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 生成随机 4 位数字 ID，方便手机输入
+        const myId = Math.floor(1000 + Math.random() * 9000).toString();
+        const peer = new Peer(myId); 
+        let localStream;
+
+        // 获取摄像头权限
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true })
+            .then(stream => {
+                localStream = stream;
+                document.getElementById('local-video').srcObject = stream;
+            })
+            .catch(err => alert("请允许摄像头权限，否则无法通话：" + err));
+
+        // 显示 ID
+        peer.on('open', id => {
+            document.getElementById('my-id').innerText = id;
+        });
+
+        // 监听呼叫
+        peer.on('call', call => {
+            if(confirm("有人请求视频通话，是否接听？")) {
+                call.answer(localStream);
+                handleCall(call);
+            }
+        });
+
+        function makeCall() {
+            const targetId = document.getElementById('peer-id-input').value;
+            if(!targetId) return alert("请输入 ID");
+            const call = peer.call(targetId, localStream);
+            handleCall(call);
+        }
+
+        function handleCall(call) {
+            call.on('stream', remoteStream => {
+                document.getElementById('remote-video').srcObject = remoteStream;
+            });
+        }
+    </script>
+</body>
+</html>
