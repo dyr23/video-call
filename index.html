@@ -1,141 +1,121 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>3D 互动树</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>隔空控树交互系统</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js" type="module"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { margin: 0; overflow: hidden; }
-        canvas { display: block; }
+        body { margin: 0; background: #000; overflow: hidden; }
+        #video-container { position: absolute; bottom: 20px; right: 20px; width: 120px; height: 90px; border: 2px solid #3b82f6; border-radius: 10px; overflow: hidden; z-index: 100; transform: scaleX(-1); }
+        video { width: 100%; height: 100%; object-fit: cover; }
     </style>
 </head>
 <body>
+
+    <div id="video-container">
+        <video id="input-video"></video>
+    </div>
+
+    <div class="absolute top-10 left-0 w-full text-center z-50 pointer-events-none">
+        <h1 class="text-white text-2xl font-bold tracking-widest drop-shadow-lg">隔空旋转互动树</h1>
+        <p id="status" class="text-blue-400 mt-2">正在初始化摄像头...</p>
+    </div>
+
     <script type="module">
         import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js';
 
         let scene, camera, renderer, treeGroup;
-        let isDragging = false;
-        let previousTouchX = 0;
-        let rotationSpeed = 0;
+        let lastHandX = null;
+        const videoElement = document.getElementById('input-video');
+        const statusText = document.getElementById('status');
 
-        init();
-        animate();
-
-        function init() {
-            // 场景
+        // --- 1. 初始化 3D 场景 ---
+        function initThree() {
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x333333); // 深灰色背景
-
-            // 摄像头 (透视相机)
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 1.5, 5); // 稍微抬高并拉远摄像头
+            camera.position.set(0, 2, 5);
 
-            // 渲染器
-            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio); // 适配手机屏幕分辨率
             document.body.appendChild(renderer.domElement);
 
-            // 光源
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); // 环境光
-            scene.add(ambientLight);
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8); // 平行光
-            directionalLight.position.set(1, 1, 1).normalize();
-            scene.add(directionalLight);
+            const light = new THREE.DirectionalLight(0xffffff, 1);
+            light.position.set(1, 1, 2);
+            scene.add(light);
+            scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 
-            // 创建树
+            // 创建一棵简单的树
             treeGroup = new THREE.Group();
-            createTree();
-            scene.add(treeGroup);
-
-            // 监听窗口大小变化
-            window.addEventListener('resize', onWindowResize);
-
-            // 触摸事件监听 (手机端滑动)
-            renderer.domElement.addEventListener('touchstart', onTouchStart, false);
-            renderer.domElement.addEventListener('touchmove', onTouchMove, false);
-            renderer.domElement.addEventListener('touchend', onTouchEnd, false);
-        }
-
-        function createTree() {
-            // 树干 (圆柱体)
-            const trunkGeometry = new THREE.CylinderGeometry(0.3, 0.5, 3, 32);
-            const trunkMaterial = new THREE.MeshPhongMaterial({ color: 0x8B4513 }); // 棕色
-            const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
-            trunk.position.y = 1.5; // 放在地面上
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.4, 3), new THREE.MeshPhongMaterial({color: 0x8B4513}));
             treeGroup.add(trunk);
-
-            // 树冠 (球体或多个球体)
-            const leavesGeometry = new THREE.SphereGeometry(1.5, 32, 32);
-            const leavesMaterial = new THREE.MeshPhongMaterial({ color: 0x228B22 }); // 深绿色
-            const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
-            leaves.position.y = 3.5; // 放在树干顶部
-            treeGroup.add(leaves);
-
-            // 简单的枝干 (再加几个小圆柱模拟)
-            const branch1 = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.2, 1.5, 8), trunkMaterial);
-            branch1.position.set(0.8, 2.5, 0);
-            branch1.rotation.z = Math.PI / 4;
-            treeGroup.add(branch1);
-
-            const branch2 = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.2, 1.5, 8), trunkMaterial);
-            branch2.position.set(-0.8, 2.5, 0);
-            branch2.rotation.z = -Math.PI / 4;
-            treeGroup.add(branch2);
+            const canopy = new THREE.Mesh(new THREE.SphereGeometry(1.5, 16, 16), new THREE.MeshPhongMaterial({color: 0x228B22}));
+            canopy.position.y = 2.5;
+            treeGroup.add(canopy);
             
-            // 可以继续添加更多枝干和树冠细节
+            scene.add(treeGroup);
         }
 
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
+        // --- 2. 初始化手势识别 ---
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
 
-        // 触摸开始
-        function onTouchStart(event) {
-            isDragging = true;
-            previousTouchX = event.touches[0].clientX; // 记录第一个手指的X坐标
-            rotationSpeed = 0; // 停止自动旋转
-        }
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
 
-        // 触摸移动
-        function onTouchMove(event) {
-            if (!isDragging) return;
-            const currentTouchX = event.touches[0].clientX;
-            const deltaX = currentTouchX - previousTouchX; // 计算X轴滑动距离
-            
-            // 根据滑动距离调整旋转速度
-            rotationSpeed = deltaX * 0.005; // 调整乘数来控制灵敏度
+        hands.onResults((results) => {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                statusText.innerText = "🙌 已检测到手势 - 左右移动试一试";
+                const hand = results.multiHandLandmarks[0];
+                // 使用食指指尖 (Landmark 8) 的 X 坐标
+                const currentHandX = hand[8].x;
 
-            // 根据滑动方向顺时针/逆时针旋转
-            // 向右滑 (deltaX > 0) -> 逆时针 (Y轴正方向)
-            // 向左滑 (deltaX < 0) -> 顺时针 (Y轴负方向)
-            treeGroup.rotation.y += rotationSpeed; 
+                if (lastHandX !== null) {
+                    const deltaX = currentHandX - lastHandX;
+                    
+                    // --- 速度控制核心 ---
+                    // 这里乘数越大，转得越快！你可以把 15 改成 30 甚至更高。
+                    const sensitivity = 20; 
+                    treeGroup.rotation.y += deltaX * sensitivity;
+                }
+                lastHandX = currentHandX;
+            } else {
+                statusText.innerText = "请将手展示在摄像头前";
+                lastHandX = null;
+            }
+        });
 
-            previousTouchX = currentTouchX; // 更新上一次的X坐标
-        }
+        const cameraFeed = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 640,
+            height: 480
+        });
 
-        // 触摸结束
-        function onTouchEnd() {
-            isDragging = false;
-            // 可以这里添加惯性效果，让树慢慢停止转动
-            // 这里我们先简化，松手就停止滑动带来的旋转
-            rotationSpeed = 0; 
-        }
+        // 启动
+        initThree();
+        cameraFeed.start();
 
         function animate() {
             requestAnimationFrame(animate);
-
-            // 如果没有拖动，可以添加一点点缓慢的自动旋转，或者让它停止
-            // if (!isDragging && rotationSpeed !== 0) {
-            //     treeGroup.rotation.y += rotationSpeed;
-            //     rotationSpeed *= 0.95; // 摩擦力效果，让速度递减
-            //     if (Math.abs(rotationSpeed) < 0.001) rotationSpeed = 0;
-            // }
-
             renderer.render(scene, camera);
         }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     </script>
 </body>
 </html>
