@@ -3,115 +3,84 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>精致交互圣诞树 - 调优版</title>
+    <title>精致微缩交互树</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { margin: 0; background: radial-gradient(circle at center, #050a1a 0%, #000 100%); overflow: hidden; }
-        #canvas-ui { position: absolute; top: 15px; right: 15px; width: 70px; height: 90px; border: 1px solid rgba(0,255,0,0.3); border-radius: 10px; z-index: 100; transform: scaleX(-1); opacity: 0.6; }
+        body { margin: 0; background: #000; overflow: hidden; }
+        #canvas-ui { position: absolute; top: 10px; left: 10px; width: 60px; height: 80px; border: 1px solid rgba(255,255,255,0.2); border-radius: 5px; z-index: 100; transform: scaleX(-1); }
     </style>
 </head>
 <body>
-    <div id="overlay" class="absolute inset-0 z-[200] flex items-center justify-center bg-black/90">
-        <div class="text-center">
-            <button onclick="start()" class="border-2 border-white text-white px-10 py-4 rounded-full font-light tracking-[0.2em] text-lg hover:bg-white hover:text-black transition-all">
-                ENTER EXPERIENCE
-            </button>
-        </div>
+    <div id="overlay" class="absolute inset-0 z-[200] flex items-center justify-center bg-black">
+        <button onclick="start()" class="border border-white/30 text-white px-8 py-3 rounded-md tracking-widest text-sm uppercase">加载精致模式</button>
     </div>
 
-    <div id="status" class="absolute top-12 w-full text-center text-white/50 z-50 text-xs tracking-[0.3em] uppercase pointer-events-none">Waiting for input...</div>
+    <div id="status" class="absolute top-10 w-full text-center text-white/40 z-50 text-[10px] tracking-[0.5em] uppercase pointer-events-none">Stable Mode</div>
     <canvas id="canvas-ui"></canvas>
     <video id="input-video" style="display:none"></video>
 
     <script>
-        let scene, camera, renderer, treeGroup;
-        let lastX = null;
-        let targetRotation = 0; // 目标旋转值
-        let currentRotation = 0; // 当前旋转值
-        let raycaster = new THREE.Raycaster();
-        let mouse = new THREE.Vector2();
+        let scene, camera, renderer, treeGroup, lastX = null;
+        let targetRotation = 0;
+        let currentRotation = 0;
 
         function init3D() {
             scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 2, 8); 
+            // 增加 FOV 到 60，让物体显得更远更小
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 1.5, 10); 
 
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(renderer.domElement);
 
-            scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+            scene.add(new THREE.AmbientLight(0xffffff, 1.5));
             
             treeGroup = new THREE.Group();
-            // 【关键修改】树木缩小到 0.8，保证屏幕适配
-            treeGroup.scale.set(0.8, 0.8, 0.8); 
+            // 【史诗级缩小】从 0.8 砍到 0.45
+            treeGroup.scale.set(0.45, 0.45, 0.45); 
 
-            // 1. 树干
-            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.18, 1.2), new THREE.MeshPhongMaterial({color: 0x2b1d19}));
+            // 树干
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 2), new THREE.MeshPhongMaterial({color: 0x1a110e}));
             treeGroup.add(trunk);
 
-            // 2. 树冠
+            // 树冠
             for(let i=0; i<4; i++) {
                 const leaf = new THREE.Mesh(
-                    new THREE.ConeGeometry(1.6 - i*0.35, 1.2, 12),
-                    new THREE.MeshPhongMaterial({color: 0x143d21, flatShading: true})
+                    new THREE.ConeGeometry(2.5 - i*0.5, 2, 12),
+                    new THREE.MeshPhongMaterial({color: 0x0a2412, flatShading: true})
                 );
-                leaf.position.y = 1.0 + (i * 0.8);
+                leaf.position.y = 1.5 + (i * 1.2);
                 treeGroup.add(leaf);
                 addPhoto(leaf.position.y, i);
             }
             scene.add(treeGroup);
-
-            window.addEventListener('click', handleAction);
-            window.addEventListener('touchstart', (e) => handleAction(e.touches[0]));
         }
 
         function addPhoto(y, index) {
             const loader = new THREE.TextureLoader();
-            const tex = loader.load(`https://picsum.photos/400/500?random=${index + 50}`);
-            const geo = new THREE.PlaneGeometry(0.7, 0.9);
-            const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide });
-            const photo = new THREE.Mesh(geo, mat);
-            
-            const angle = (index * 2.2);
-            const dist = 1.3 - (index * 0.1);
+            const tex = loader.load(`https://picsum.photos/300/400?random=${index + 99}`);
+            const photo = new THREE.Mesh(
+                new THREE.PlaneGeometry(1.2, 1.6),
+                new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide })
+            );
+            const angle = (index * 1.5);
+            const dist = 2.5;
             photo.position.set(Math.cos(angle)*dist, y, Math.sin(angle)*dist);
             photo.lookAt(0, y, 0);
-            
             photo.userData = { isPhoto: true, originalPos: photo.position.clone(), originalRot: photo.rotation.clone() };
             treeGroup.add(photo);
         }
 
-        function handleAction(event) {
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-            raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObjects(treeGroup.children);
-
-            if (intersects.length > 0 && intersects[0].object.userData.isPhoto) {
-                const obj = intersects[0].object;
-                if(obj.scale.x === 1) {
-                    obj.scale.set(2.5, 2.5, 2.5);
-                    obj.position.set(0, 2, 3); 
-                    obj.rotation.set(0, 0, 0);
-                } else {
-                    obj.scale.set(1, 1, 1);
-                    obj.position.copy(obj.userData.originalPos);
-                    obj.rotation.copy(obj.userData.originalRot);
-                }
-            }
-        }
-
         async function start() {
-            document.getElementById('overlay').style.display = 'none';
+            document.getElementById('overlay').remove();
             init3D();
             const video = document.getElementById('input-video');
             const hands = new Hands({locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
-            hands.setOptions({maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.6});
+            hands.setOptions({maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.7});
             
             hands.onResults(res => {
                 const canvas = document.getElementById('canvas-ui');
@@ -122,14 +91,12 @@
                 if(res.multiHandLandmarks && res.multiHandLandmarks.length > 0) {
                     const x = res.multiHandLandmarks[0][8].x;
                     if(lastX !== null) {
-                        // 【速度修改】从 120 降到 35
-                        targetRotation += (x - lastX) * 35; 
+                        // 【大幅降速】从 35 降到 8，现在会非常稳
+                        targetRotation += (x - lastX) * 8; 
                     }
                     lastX = x;
-                    document.getElementById('status').innerText = "TRACKING ACTIVE";
                 } else {
                     lastX = null;
-                    document.getElementById('status').innerText = "SHOW HAND TO START";
                 }
             });
             const cam = new Camera(video, {onFrame: async () => {await hands.send({image: video})}, width: 320, height: 240});
@@ -139,11 +106,26 @@
 
         function render() {
             requestAnimationFrame(render);
-            // 实现平滑过渡
-            currentRotation += (targetRotation - currentRotation) * 0.1;
+            // 增加阻尼系数，让转动更丝滑沉稳 (0.1 -> 0.05)
+            currentRotation += (targetRotation - currentRotation) * 0.05;
             treeGroup.rotation.y = currentRotation;
             renderer.render(scene, camera);
         }
+
+        window.onclick = (e) => {
+            const raycaster = new THREE.Raycaster();
+            const mouse = new THREE.Vector2((e.clientX/window.innerWidth)*2-1, -(e.clientY/window.innerHeight)*2+1);
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(treeGroup.children);
+            if(intersects.length > 0 && intersects[0].object.userData.isPhoto) {
+                const p = intersects[0].object;
+                if(p.scale.x === 1) {
+                    p.scale.set(3, 3, 3); p.position.set(0, 1.5, 5); p.rotation.set(0,0,0);
+                } else {
+                    p.scale.set(1, 1, 1); p.position.copy(p.userData.originalPos); p.rotation.copy(p.userData.originalRot);
+                }
+            }
+        };
     </script>
 </body>
 </html>
