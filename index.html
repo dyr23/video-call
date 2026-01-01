@@ -3,19 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>手势控树 - 调试版</title>
+    <title>精致圣诞树 - 手势交互版</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js" type="module"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        #video-ui { position: absolute; bottom: 10px; left: 10px; width: 160px; height: 120px; border: 2px solid white; z-index: 100; }
+        #video-ui { position: absolute; bottom: 10px; left: 10px; width: 120px; height: 90px; border: 1px solid rgba(255,255,255,0.3); border-radius: 8px; overflow: hidden; z-index: 100; }
         #canvas-ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1); }
-        video { display: none; } /* 隐藏原始视频，我们用 Canvas 画出来 */
+        video { display: none; }
+        body { margin: 0; background: radial-gradient(circle, #1a2a6c, #b21f1f, #fdbb2d); } /* 节日氛围背景 */
     </style>
 </head>
-<body class="bg-black">
-    <div id="status" class="absolute top-5 w-full text-center text-white z-50 text-sm">正在加载 AI 模型...</div>
+<body>
+    <div id="status" class="absolute top-5 w-full text-center text-white z-50 text-sm font-bold">正在召唤圣诞树...</div>
     
     <div id="video-ui">
         <video id="input-video"></video>
@@ -32,55 +33,102 @@
         const canvasCtx = canvasElement.getContext('2d');
         const statusText = document.getElementById('status');
 
-        // 1. 初始化 3D 场景
+        // --- 1. 初始化 3D 场景 ---
         scene = new THREE.Scene();
         camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 2, 5);
-        renderer = new THREE.WebGLRenderer({ antialias: true });
+        camera.position.set(0, 3, 7);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // 创建树
-        treeGroup = new THREE.Group();
-        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.4, 3), new THREE.MeshPhongMaterial({color: 0x8B4513}));
-        treeGroup.add(trunk);
-        const canopy = new THREE.Mesh(new THREE.SphereGeometry(1.5, 8, 8), new THREE.MeshPhongMaterial({color: 0x228B22, wireframe: true}));
-        canopy.position.y = 2.5;
-        treeGroup.add(canopy);
-        scene.add(treeGroup);
-        scene.add(new THREE.PointLight(0xffffff, 1, 100).clone().set(0, 5, 5));
+        // 灯光设置
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const pointLight = new THREE.PointLight(0xffffff, 1);
+        pointLight.position.set(5, 5, 5);
+        scene.add(pointLight);
 
-        // 2. 手势识别核心
+        // --- 2. 创建精致圣诞树 ---
+        treeGroup = new THREE.Group();
+
+        // A. 树干
+        const trunkGeom = new THREE.CylinderGeometry(0.2, 0.3, 1, 16);
+        const trunkMat = new THREE.MeshPhongMaterial({ color: 0x5D4037 });
+        const trunk = new THREE.Mesh(trunkGeom, trunkMat);
+        trunk.position.y = 0.5;
+        treeGroup.add(trunk);
+
+        // B. 五层树冠 (增加层次感)
+        const leafColors = [0x2D5A27, 0x366630, 0x3F7239, 0x487E42, 0x518A4B];
+        for (let i = 0; i < 5; i++) {
+            const levelGeom = new THREE.ConeGeometry(2 - i * 0.35, 1.2, 8);
+            const levelMat = new THREE.MeshPhongMaterial({ 
+                color: leafColors[i],
+                flatShading: true // 增加切割质感，看起来更现代
+            });
+            const level = new THREE.Mesh(levelGeom, levelMat);
+            level.position.y = 1.2 + (i * 0.7);
+            treeGroup.add(level);
+        }
+
+        // C. 顶部的星星
+        const starGeom = new THREE.OctahedronGeometry(0.3, 0);
+        const starMat = new THREE.MeshBasicMaterial({ color: 0xFFD700 });
+        const star = new THREE.Mesh(starGeom, starMat);
+        star.position.y = 4.8;
+        treeGroup.add(star);
+
+        // D. 装饰彩灯 (随机分布)
+        for (let i = 0; i < 30; i++) {
+            const ballGeom = new THREE.SphereGeometry(0.08, 8, 8);
+            const ballMat = new THREE.MeshPhongMaterial({ 
+                color: Math.random() * 0xffffff,
+                emissive: 0x222222 
+            });
+            const ball = new THREE.Mesh(ballGeom, ballMat);
+            
+            // 随机放在树冠表面
+            const angle = Math.random() * Math.PI * 2;
+            const radius = Math.random() * 1.5;
+            const height = 1 + Math.random() * 3.5;
+            ball.position.set(Math.cos(angle) * radius * (1 - height/5), height, Math.sin(angle) * radius * (1 - height/5));
+            treeGroup.add(ball);
+        }
+
+        scene.add(treeGroup);
+
+        // --- 3. 手势识别 ---
         const hands = new Hands({
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
         });
 
-        hands.setOptions({ maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.5 });
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5 });
 
         hands.onResults((results) => {
-            // 在小窗口画出调试信息
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
             canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                statusText.innerText = "✅ 已连接！请大幅度左右挥手";
+                statusText.innerText = "✨ 圣诞魔力生效中 - 请挥动手掌 ✨";
                 const hand = results.multiHandLandmarks[0];
-                const currentX = hand[8].x; // 食指位置
+                const currentX = hand[8].x; 
 
-                // 画出食指位置（红点）
-                canvasCtx.fillStyle = "red";
+                // 在预览窗画红点
+                canvasCtx.fillStyle = "#00FF00";
                 canvasCtx.beginPath();
                 canvasCtx.arc(currentX * canvasElement.width, hand[8].y * canvasElement.height, 5, 0, 2*Math.PI);
                 canvasCtx.fill();
 
                 if (lastHandX !== null) {
                     const deltaX = currentX - lastHandX;
-                    // 【关键点】如果树动得慢，把这个 30 改成 100
-                    treeGroup.rotation.y += deltaX * 40; 
+                    // 灵敏度保持 50，确保快速旋转
+                    treeGroup.rotation.y += deltaX * 50; 
                 }
                 lastHandX = currentX;
             } else {
-                statusText.innerText = "❌ 未检测到手，请靠近一点";
+                statusText.innerText = "👋 请将手展示在镜头前";
+                lastHandX = null;
             }
         });
 
@@ -92,9 +140,18 @@
 
         function animate() {
             requestAnimationFrame(animate);
+            // 给星星加一点自转
+            star.rotation.y += 0.05;
             renderer.render(scene, camera);
         }
         animate();
+
+        // 适配屏幕
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     </script>
 </body>
 </html>
