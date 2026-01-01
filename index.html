@@ -3,22 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>巨型圣诞树交互系统</title>
+    <title>精致交互圣诞树</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; }
-        #canvas-ui { position: absolute; top: 10px; right: 10px; width: 80px; height: 110px; border: 1px solid #0f0; border-radius: 5px; z-index: 100; transform: scaleX(-1); opacity: 0.7; }
+        body { margin: 0; background: radial-gradient(circle at center, #050a1a 0%, #000 100%); overflow: hidden; }
+        #canvas-ui { position: absolute; top: 15px; right: 15px; width: 70px; height: 90px; border: 1px solid rgba(0,255,0,0.5); border-radius: 10px; z-index: 100; transform: scaleX(-1); }
+        #overlay { background: rgba(0,0,0,0.85); backdrop-filter: blur(10px); }
     </style>
 </head>
 <body>
-    <div id="overlay" class="absolute inset-0 z-[200] flex items-center justify-center bg-black">
-        <button onclick="start()" class="bg-green-600 text-white px-10 py-5 rounded-full font-bold text-2xl shadow-2xl">点击开启巨型交互树</button>
+    <div id="overlay" class="absolute inset-0 z-[200] flex items-center justify-center">
+        <div class="text-center">
+            <div class="text-6xl mb-6">🎄</div>
+            <button onclick="start()" class="bg-white text-black px-12 py-4 rounded-full font-bold text-xl shadow-white/20 shadow-2xl active:scale-95 transition-all">开启视觉交互</button>
+            <p class="text-gray-500 mt-6 text-sm">授权后请将手放置在距镜头50cm处</p>
+        </div>
     </div>
 
-    <div id="status" class="absolute top-10 w-full text-center text-white z-50 text-xl font-bold pointer-events-none"></div>
+    <div id="status" class="absolute top-12 w-full text-center text-white/70 z-50 text-base font-light tracking-widest pointer-events-none"></div>
     <canvas id="canvas-ui"></canvas>
     <video id="input-video" style="display:none"></video>
 
@@ -29,57 +34,64 @@
 
         function init3D() {
             scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-            // 相机高度降低到1.5，距离拉近到4，产生仰视感
-            camera.position.set(0, 1.5, 4); 
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 1000);
+            // 调整相机位置，让树刚好居中
+            camera.position.set(0, 2, 7); 
 
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(renderer.domElement);
 
-            scene.add(new THREE.AmbientLight(0xffffff, 1));
+            scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+            
             treeGroup = new THREE.Group();
-            treeGroup.scale.set(2.5, 2.5, 2.5); // 树木尺寸大幅增加
+            // 缩小缩放比例，使其完美适配手机屏幕
+            treeGroup.scale.set(1.2, 1.2, 1.2); 
 
-            // 树干
-            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 1), new THREE.MeshPhongMaterial({color: 0x4B2C20}));
+            // 1. 树干
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.2, 1.2), new THREE.MeshPhongMaterial({color: 0x3d251e}));
             treeGroup.add(trunk);
 
-            // 树冠
+            // 2. 精致树冠
+            const leafColors = [0x0b3018, 0x0f4021, 0x14522a, 0x1a6635];
             for(let i=0; i<4; i++) {
                 const leaf = new THREE.Mesh(
-                    new THREE.ConeGeometry(1.2 - i*0.25, 1, 12),
-                    new THREE.MeshPhongMaterial({color: 0x0A3D16, flatShading: true})
+                    new THREE.ConeGeometry(1.6 - i*0.35, 1.2, 12),
+                    new THREE.MeshPhongMaterial({color: leafColors[i], flatShading: true})
                 );
-                leaf.position.y = 0.8 + (i * 0.6);
+                leaf.position.y = 1.0 + (i * 0.8);
                 treeGroup.add(leaf);
                 
-                // 每层挂两张图片
-                addPhotoToLevel(leaf.position.y, i);
+                // 在每一层均衡挂载照片
+                addPhoto(leaf.position.y, i);
             }
             scene.add(treeGroup);
 
-            // 点击事件监听
-            window.addEventListener('click', onDocumentMouseDown, false);
-            window.addEventListener('touchstart', (e) => onDocumentMouseDown(e.touches[0]), false);
+            // 交互监听
+            window.addEventListener('click', handleAction);
+            window.addEventListener('touchstart', (e) => handleAction(e.touches[0]));
         }
 
-        function addPhotoToLevel(y, index) {
+        function addPhoto(y, index) {
             const loader = new THREE.TextureLoader();
-            // 使用占位图，你可以之后换成你自己的图片链接
-            const tex = loader.load(`https://picsum.photos/200/300?random=${index}`);
-            const geo = new THREE.PlaneGeometry(0.4, 0.6);
+            // 随机照片占位
+            const tex = loader.load(`https://picsum.photos/400/500?random=${index + 10}`);
+            const geo = new THREE.PlaneGeometry(0.6, 0.8);
             const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide });
             const photo = new THREE.Mesh(geo, mat);
             
-            const angle = (index * 2);
-            photo.position.set(Math.cos(angle)*0.8, y, Math.sin(angle)*0.8);
+            // 螺旋式排布
+            const angle = (index * 2.5);
+            const dist = 1.2 - (index * 0.15);
+            photo.position.set(Math.cos(angle)*dist, y, Math.sin(angle)*dist);
             photo.lookAt(0, y, 0);
-            photo.userData = { isPhoto: true, originalPos: photo.position.clone() };
+            
+            photo.userData = { isPhoto: true, originalPos: photo.position.clone(), originalRot: photo.rotation.clone() };
             treeGroup.add(photo);
         }
 
-        function onDocumentMouseDown(event) {
+        function handleAction(event) {
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
             raycaster.setFromCamera(mouse, camera);
@@ -87,24 +99,27 @@
 
             if (intersects.length > 0 && intersects[0].object.userData.isPhoto) {
                 const obj = intersects[0].object;
-                // 瞬间放大动画：拉近到相机面前
                 if(obj.scale.x === 1) {
-                    obj.scale.set(3, 3, 3);
-                    obj.position.set(0, 1.5, 2); // 弹到正前方
-                    obj.rotation.set(0,0,0);
+                    // 点击放大：瞬间移动到屏幕中央
+                    obj.scale.set(2.5, 2.5, 2.5);
+                    obj.position.set(0, 2, 3); 
+                    obj.rotation.set(0, 0, 0);
                 } else {
+                    // 缩回原位
                     obj.scale.set(1, 1, 1);
                     obj.position.copy(obj.userData.originalPos);
+                    obj.rotation.copy(obj.userData.originalRot);
                 }
             }
         }
 
         async function start() {
-            document.getElementById('overlay').remove();
+            document.getElementById('overlay').style.display = 'none';
             init3D();
             const video = document.getElementById('input-video');
             const hands = new Hands({locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
             hands.setOptions({maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.5});
+            
             hands.onResults(res => {
                 const canvas = document.getElementById('canvas-ui');
                 const ctx = canvas.getContext('2d');
@@ -112,9 +127,11 @@
                 ctx.drawImage(res.image, 0,0,canvas.width,canvas.height);
                 if(res.multiHandLandmarks && res.multiHandLandmarks.length > 0) {
                     const x = res.multiHandLandmarks[0][8].x;
-                    if(lastX !== null) treeGroup.rotation.y += (x - lastX) * 100; // 极速旋转
+                    if(lastX !== null) treeGroup.rotation.y += (x - lastX) * 120; // 极速灵敏度
                     lastX = x;
-                    document.getElementById('status').innerText = "✨ 隔空旋转中 ✨";
+                    document.getElementById('status').innerText = "VIRTUAL CONTROL ACTIVE";
+                } else {
+                    document.getElementById('status').innerText = "WAVING HAND TO ROTATE";
                 }
             });
             const cam = new Camera(video, {onFrame: async () => {await hands.send({image: video})}, width: 320, height: 240});
@@ -122,7 +139,10 @@
             render();
         }
 
-        function render() { requestAnimationFrame(render); renderer.render(scene, camera); }
+        function render() {
+            requestAnimationFrame(render);
+            renderer.render(scene, camera);
+        }
     </script>
 </body>
 </html>
